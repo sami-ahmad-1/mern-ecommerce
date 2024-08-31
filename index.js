@@ -19,6 +19,7 @@ const authRouter = require("./routes/Auth")
 const cartRouter = require('./routes/Cart');
 const orderRouter = require('./routes/Order');
 const cookieParser = require('cookie-parser');
+const { setDefaultHighWaterMark } = require('stream');
 
 
 //PASSPORT 
@@ -115,6 +116,36 @@ passport.deserializeUser(function (user, cb) {
 });
 
 
+// PAYMENT INSTANCE 
+
+
+const stripe = require("stripe")('sk_test_51PtkUeBbjJtGVHMSIbhpDQwzhGCBWxqbd3YnU98D4UcDyofC0Tkjhv7yHJxQzJkObhLajFNPr5sPnPUKesR7bR5V00wOL6crj9');
+
+
+const calculateOrderAmount = (items) => {
+
+  return 1200;
+};
+
+server.post("/create-payment-intent", async (req, res) => {
+  const { items } = req.body;
+
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: calculateOrderAmount(items),
+    currency: "usd",
+    automatic_payment_methods: {
+      enabled: true,
+    },
+  });
+
+  res.send({
+    clientSecret: paymentIntent.client_secret,
+    dpmCheckerLink: `https://dashboard.stripe.com/settings/payment_methods/review?transaction_id=${paymentIntent.id}`,
+  });
+});
+
+
+server.listen(4242, () => console.log("Node server listening on port 4242!"));
 
 
 

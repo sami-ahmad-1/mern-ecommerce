@@ -316,6 +316,6 @@ server.get('*', (req, res) => {
 });
 
 // Start the Server
-server.listen(process.env.PORT, () => {
+server.listen(process.env.PORT || 8080, () => {
     console.log('Server Started on Port', process.env.PORT);
 });

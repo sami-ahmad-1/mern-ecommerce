@@ -1,59 +1,58 @@
-const express = require('express');
-require('dotenv').config()
+const express = require('express')
 const cors = require('cors');
-const server = express();
-const mongoose = require("mongoose");
-const { User } = require('./model/User');
+const server = express()
+const mongoose = require("mongoose")
+const { User } = require('./model/User')
 const passport = require('passport');
 const session = require('express-session');
 const LocalStrategy = require('passport-local').Strategy;
 const crypto = require('crypto');
-const JwtStrategy = require('passport-jwt').Strategy;
-const ExtractJwt = require('passport-jwt').ExtractJwt;
+const JwtStrategy = require('passport-jwt').Strategy
+const ExtractJwt = require('passport-jwt').ExtractJwt
 const jwt = require('jsonwebtoken');
-const cookieExtractor = require('./services/Common');
-const { isAuth } = require('./services/Common');
-const { sanitizeUser } = require('./services/Common');
-const productRouter = require('./routes/Products');
-const userRouter = require("./routes/User");
-const authRouter = require("./routes/Auth");
+const cokkieExtractor = require('./services/Common')
+const { isAuth } = require('./services/Common')
+const { sanitizeUser } = require('./services/Common')
+const productRouter = require('./routes/Products')
+const userRouter = require("./routes/User")
+const authRouter = require("./routes/Auth")
 const cartRouter = require('./routes/Cart');
 const orderRouter = require('./routes/Order');
 const cookieParser = require('cookie-parser');
-const MongoStore = require('connect-mongo');
-const path = require('path');
+const { setDefaultHighWaterMark } = require('stream');
 
-// PASSPORT 
-server.use(express.static(path.resolve(__dirname,'build')));
-server.use(cookieParser());
+
+//PASSPORT 
+server.use(express.static('build'))
+server.use(cookieParser())
+
 
 server.use(session({
-    secret:process.env.SESSION_KEY ,
+    secret: 'keyboard cat',
     resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({ mongoUrl: process.env.MONGODB_URL}),
-    cookie: {
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
+    saveUninitialized: false
 }));
-
 server.use(passport.authenticate('session'));
 
-// JWT 
+//JWT 
+const SECRET_KEY = 'SECRET_KEY'
+
+var opts = {}
+opts.jwtFromRequest = cokkieExtractor
+opts.secretOrKey = SECRET_KEY;
 
 
-var opts = {};
-opts.jwtFromRequest = cookieExtractor;
-opts.secretOrKey = process.env.JWT_SECRET_KEY;
 
-// Middleware
+//Middleware
+
 server.use(cors());
-server.use(express.json());
-server.use('/products', productRouter.router);
-server.use('/users', userRouter.router);
-server.use('/auth', authRouter.router);
+server.use(express.json())
+server.use('/products', productRouter.router)
+server.use('/users', userRouter.router)
+server.use('/auth', authRouter.router)
 server.use('/cart', cartRouter.router);
 server.use('/order', orderRouter.router);
+
 
 // PASSPORT STRATEGY
 passport.use('local', new LocalStrategy(
@@ -68,26 +67,30 @@ passport.use('local', new LocalStrategy(
             const storedPasswordBuffer = Buffer.from(user.password, 'hex');
             const saltBuffer = Buffer.from(user.salt, 'hex');
 
-            crypto.pbkdf2(password, saltBuffer, 310000, 32, 'sha256', function (err, hashedPassword) {
-                if (err) {
-                    return done(err);
-                }
-                if (!crypto.timingSafeEqual(storedPasswordBuffer, hashedPassword)) {
-                    return done(null, false, { message: 'Invalid Credentials' });
-                }
-                const sanitizedUser = sanitizeUser(user);
-                const token = jwt.sign(sanitizedUser, process.env.JWT_SECRET_KEY);
-                return done(null, { ...sanitizedUser, token });
-            });
+            crypto.pbkdf2(password, saltBuffer, 310000, 32, 'sha256', 
+                function (err, hashedPassword) {
+                    if (err) {
+                        return done(err);
+                    }
+                    if (!crypto.timingSafeEqual(storedPasswordBuffer, hashedPassword)) {
+                        return done(null, false, { message: 'Invalid Credentials' });
+                    }
+                    const sanitizedUser = sanitizeUser(user);
+                    const token = jwt.sign(sanitizedUser, SECRET_KEY);
+                    return done(null, { ...sanitizedUser, token }); // Return both the user and token
+                });
         } catch (err) {
             return done(err);
         }
     }
 ));
 
+
+
+// JWT STRATEGY
 passport.use('jwt', new JwtStrategy(opts, async function (jwt_payload, done) {
     try {
-        const user = await User.findById(jwt_payload.id);
+        const user = await User.findById(jwt_payload.id);  // Ensure this matches how you store the user's ID
         if (user) {
             return done(null, sanitizeUser(user));
         } else {
@@ -97,6 +100,8 @@ passport.use('jwt', new JwtStrategy(opts, async function (jwt_payload, done) {
         return done(err, false);
     }
 }));
+
+
 
 passport.serializeUser(function (user, cb) {
     process.nextTick(function () {
@@ -110,37 +115,51 @@ passport.deserializeUser(function (user, cb) {
     });
 });
 
+
 // PAYMENT INSTANCE 
-const stripe = require("stripe")(process.env.STRIPE_SERVER_KEY);
+
+
+const stripe = require("stripe")('sk_test_51PtkUeBbjJtGVHMSIbhpDQwzhGCBWxqbd3YnU98D4UcDyofC0Tkjhv7yHJxQzJkObhLajFNPr5sPnPUKesR7bR5V00wOL6crj9');
+
+
+const calculateOrderAmount = (items) => {
+
+  return 1200;
+};
 
 server.post("/create-payment-intent", async (req, res) => {
-    const { totalPrice } = req.body;
-    const paymentIntent = await stripe.paymentIntents.create({
-        amount: totalPrice * 100,
-        currency: "usd",
-        automatic_payment_methods: {
-            enabled: true,
-        },
-    });
+  const { items } = req.body;
 
-    res.send({
-        clientSecret: paymentIntent.client_secret,
-        dpmCheckerLink: `https://dashboard.stripe.com/settings/payment_methods/review?transaction_id=${paymentIntent.id}`,
-    });
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: calculateOrderAmount(items),
+    currency: "usd",
+    automatic_payment_methods: {
+      enabled: true,
+    },
+  });
+
+  res.send({
+    clientSecret: paymentIntent.client_secret,
+    dpmCheckerLink: `https://dashboard.stripe.com/settings/payment_methods/review?transaction_id=${paymentIntent.id}`,
+  });
 });
+
+
+server.listen(4242, () => console.log("Node server listening on port 4242!"));
+
+
 
 const main = async () => {
-    await mongoose.connect(process.env.MONGODB_URL);
-    console.log("Database Connected");
+    await mongoose.connect('mongodb://127.0.0.1:27017/ecommerce');
+    console.log("Database Connected")
 }
-main().catch(err => console.log(err));
+main().catch(err => console.log(err))
 
 server.get('/', (req, res) => {
-    res.json({ Status: "Success" });
-});
-server.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, 'build', 'index.html'));
-  });
-server.listen(process.env.PORT, () => {
-    console.log('Server Started');
-});
+    res.json({ Status: "Success" })
+})
+
+
+server.listen(8080, () => {
+    console.log('Server Started')
+})

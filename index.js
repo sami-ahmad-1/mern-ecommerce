@@ -33,7 +33,7 @@ server.use(session({
     saveUninitialized: false,
     store: MongoStore.create({ mongoUrl: process.env.MONGODB_URL}),
     cookie: {
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        maxAge: 24 * 60 * 60 * 100000 // 24 hours
     }
 }));
 
@@ -144,5 +144,3 @@ server.get('*', (req, res) => {
 server.listen(process.env.PORT, () => {
     console.log('Server Started');
 });
-
-
